@@ -374,33 +374,19 @@ const t = {
 };
 
 // ИСПРАВЛЕННАЯ функция отправки сообщений для Green-API
-async function sendMessage(chatId, text, buttons = null) {
+async function sendMessage(chatId, text) {
   const finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`; 
   
   const url = `https://api.green-api.com/waInstance${GREEN_INSTANCE}/sendMessage/${GREEN_TOKEN}`;
-
-  const payload = {
-    chatId: finalChatId,
-    message: text
-  };
-
-  // Добавляем кнопки если они есть
-  if (buttons && buttons.length > 0) {
-    payload.quotedMessageId = null;
-    payload.linkPreview = false;
-    // Green-API использует keyboard для кнопок
-    payload.keyboard = {
-      rows: buttons.map(btn => ({
-        buttons: [{ buttonId: btn, buttonText: { displayText: btn } }]
-      }))
-    };
-  }
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        chatId: finalChatId, 
+        message: text
+      })
     });
     
     const result = await response.json();
@@ -413,16 +399,35 @@ async function sendMessage(chatId, text, buttons = null) {
 }
 
 function sendTelegram(text) {
-  if (!TELEGRAM_TOKEN || !ADMIN_TELEGRAM) return;
+  console.log('=== TELEGRAM DEBUG ===');
+  console.log('TELEGRAM_TOKEN:', TELEGRAM_TOKEN ? 'SET ✅' : 'NOT SET ❌');
+  console.log('ADMIN_TELEGRAM:', ADMIN_TELEGRAM ? ADMIN_TELEGRAM : 'NOT SET ❌');
+  
+  if (!TELEGRAM_TOKEN || !ADMIN_TELEGRAM) {
+    console.log('Telegram notifications DISABLED - missing credentials');
+    return;
+  }
+  
+  console.log('Sending to Telegram...');
   fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ chat_id: ADMIN_TELEGRAM, text, parse_mode: "HTML" })
-  }).catch(() => {});
+  })
+  .then(r => {
+    console.log('Telegram response status:', r.status);
+    return r.json();
+  })
+  .then(data => {
+    console.log('Telegram response data:', JSON.stringify(data, null, 2));
+  })
+  .catch(err => {
+    console.error('Telegram error:', err);
+  });
 }
 
 function getMainMenu(lang) {
-  return t[lang].items.map((item, i) => `${i + 1}. ${item}`).join('\n') + `\n\n0. ${t[lang].back}`;
+  return t[lang].items.map((item, i) => `${i + 1}. ${item}`).join('\n') + `\n\n0. ${t[lang].back}\n🔄 ${t[lang].restart}`;
 }
 
 function isWorkingHours() {
@@ -493,18 +498,19 @@ export default async function handler(req, res) {
 
   let msg = "";
 
-  // Обработка команды /start или "Начать заново"
-  if (text === "/start" || lower === "начать заново" || lower === "қайта бастау" || lower === "🔄 начать заново" || lower === "🔄 қайта бастау") {
+  // Обработка команды /start или "Начать заново" - возврат в самое начало (выбор языка)
+  if (text === "/start" || lower === "начать заново" || lower === "қайта бастау" || lower === "🔄 начать заново" || lower === "🔄 қайта бастау" || text === "🔄" || lower.includes("🔄")) {
     state = { 
-      lang: state.lang, 
-      step: "choose_org", 
+      lang: "ru", 
+      step: "start", 
       org: null, 
-      prevStep: "lang",
+      prevStep: null,
       lastActivity: Date.now(),
       isFirstVisit: false
     };
-    msg = `${t[state.lang].start}\n\nВыберите:`;
-    await sendMessage(sender, msg, [t[state.lang].kg, t[state.lang].school, t[state.lang].back]);
+    msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
+    state.step = "lang";
+    await sendMessage(sender, msg);
     users.set(sender, state);
     return res.status(200).json({ ok: true });
   }
@@ -526,15 +532,15 @@ export default async function handler(req, res) {
       // Из меню возвращаемся к выбору организации
       state.step = "choose_org";
       state.org = null;
-      msg = `${t[state.lang].start}\n\nВыберите:\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}`;
-      await sendMessage(sender, msg, [t[state.lang].kg, t[state.lang].school, t[state.lang].back]);
+      msg = `${t[state.lang].start}\n\nВыберите:\n\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}\n\n0. ${t[state.lang].back}`;
+      await sendMessage(sender, msg);
       users.set(sender, state);
       return res.status(200).json({ ok: true });
     } else if (state.step === "choose_org") {
       // Из выбора организации возвращаемся к выбору языка
       state.step = "lang";
-      msg = `${t.ru.start}\n\n${t.ru.lang}\n1. Русский\n2. Қазақша`;
-      await sendMessage(sender, msg, ["Русский", "Қазақша"]);
+      msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
+      await sendMessage(sender, msg);
       users.set(sender, state);
       return res.status(200).json({ ok: true });
     }
@@ -543,24 +549,22 @@ export default async function handler(req, res) {
   else if (state.step === "start") {
     if (state.isFirstVisit) {
       const name = senderData?.senderName || "Уважаемый пользователь";
-      msg = `👋 Здравствуйте, ${name}!\n\n${t.ru.start}\n\n${t.ru.lang}`;
+      msg = `👋 Здравствуйте, ${name}!\n\n${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
       state.isFirstVisit = false;
     } else {
-      msg = `${t.ru.start}\n\n${t.ru.lang}`;
+      msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
     }
     state.step = "lang";
-    // Отправляем с кнопками
-    await sendMessage(sender, msg, ["Русский", "Қазақша"]);
+    await sendMessage(sender, msg);
     users.set(sender, state);
     return res.status(200).json({ ok: true });
   }
   else if (state.step === "lang") {
     state.lang = (lower.includes("қазақ") || lower === "қазақша" || text === "2") ? "kz" : "ru";
-    msg = `${t[state.lang].start}\n\nВыберите:`;
+    msg = `${t[state.lang].start}\n\nВыберите:\n\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}\n\n0. ${t[state.lang].back}`;
     state.step = "choose_org";
     state.prevStep = "lang";
-    // Отправляем с кнопками
-    await sendMessage(sender, msg, [t[state.lang].kg, t[state.lang].school, t[state.lang].back]);
+    await sendMessage(sender, msg);
     users.set(sender, state);
     return res.status(200).json({ ok: true });
   }
