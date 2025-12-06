@@ -374,19 +374,33 @@ const t = {
 };
 
 // ИСПРАВЛЕННАЯ функция отправки сообщений для Green-API
-async function sendMessage(chatId, text) {
+async function sendMessage(chatId, text, buttons = null) {
   const finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`; 
   
   const url = `https://api.green-api.com/waInstance${GREEN_INSTANCE}/sendMessage/${GREEN_TOKEN}`;
+
+  const payload = {
+    chatId: finalChatId,
+    message: text
+  };
+
+  // Добавляем кнопки если они есть
+  if (buttons && buttons.length > 0) {
+    payload.quotedMessageId = null;
+    payload.linkPreview = false;
+    // Green-API использует keyboard для кнопок
+    payload.keyboard = {
+      rows: buttons.map(btn => ({
+        buttons: [{ buttonId: btn, buttonText: { displayText: btn } }]
+      }))
+    };
+  }
 
   try {
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chatId: finalChatId, 
-        message: text
-      })
+      body: JSON.stringify(payload)
     });
     
     const result = await response.json();
@@ -408,7 +422,7 @@ function sendTelegram(text) {
 }
 
 function getMainMenu(lang) {
-  return t[lang].items.map((item, i) => `${i + 1}. ${item}`).join('\n') + `\n\n${t[lang].back}`;
+  return t[lang].items.map((item, i) => `${i + 1}. ${item}`).join('\n') + `\n\n0. ${t[lang].back}`;
 }
 
 function isWorkingHours() {
@@ -485,50 +499,70 @@ export default async function handler(req, res) {
       lang: state.lang, 
       step: "choose_org", 
       org: null, 
-      prevStep: null,
+      prevStep: "lang",
       lastActivity: Date.now(),
       isFirstVisit: false
     };
-    msg = `${t[state.lang].start}\n\nВыберите:\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}`;
+    msg = `${t[state.lang].start}\n\nВыберите:`;
+    await sendMessage(sender, msg, [t[state.lang].kg, t[state.lang].school, t[state.lang].back]);
+    users.set(sender, state);
+    return res.status(200).json({ ok: true });
   }
   // Обработка запроса на связь с оператором
   else if (lower.includes("оператор") || lower.includes("человек") || lower.includes("адам") || lower.includes("қызметкер")) {
     msg = t[state.lang].operator;
-    msg += `\n\n${getMainMenu(state.lang)}`;
+    if (state.org) {
+      msg += `\n\n${getMainMenu(state.lang)}`;
+    }
   }
   // Обработка кнопки "Назад"
   else if (lower === "назад" || lower === "артқа" || lower === "◀️ назад" || lower === "◀️ артқа" || text === "0") {
-    if (state.prevStep) {
-      state.step = state.prevStep;
-      state.prevStep = null;
-    } else {
+    if (state.step === "complaint" || state.step === "waiting_contact" || state.step === "enroll") {
+      // Возвращаемся в меню
       state.step = "menu";
-    }
-    
-    if (state.step === "menu") {
+      state.prevStep = null;
       msg = `${t[state.lang][state.org === "kg" ? "kg" : "school"]}\n\n${t[state.lang].menu}\n\n${getMainMenu(state.lang)}`;
-    } else if (state.step === "choose_org") {
+    } else if (state.step === "menu") {
+      // Из меню возвращаемся к выбору организации
+      state.step = "choose_org";
+      state.org = null;
       msg = `${t[state.lang].start}\n\nВыберите:\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}`;
-    } else if (state.step === "lang") {
+      await sendMessage(sender, msg, [t[state.lang].kg, t[state.lang].school, t[state.lang].back]);
+      users.set(sender, state);
+      return res.status(200).json({ ok: true });
+    } else if (state.step === "choose_org") {
+      // Из выбора организации возвращаемся к выбору языка
+      state.step = "lang";
       msg = `${t.ru.start}\n\n${t.ru.lang}\n1. Русский\n2. Қазақша`;
+      await sendMessage(sender, msg, ["Русский", "Қазақша"]);
+      users.set(sender, state);
+      return res.status(200).json({ ok: true });
     }
   }
   // Первое приветствие
   else if (state.step === "start") {
     if (state.isFirstVisit) {
-      const name = messageData.senderName || "Уважаемый пользователь";
-      msg = `👋 Здравствуйте, ${name}!\n\n${t.ru.start}\n\n${t.ru.lang}\n1. Русский\n2. Қазақша`;
+      const name = senderData?.senderName || "Уважаемый пользователь";
+      msg = `👋 Здравствуйте, ${name}!\n\n${t.ru.start}\n\n${t.ru.lang}`;
       state.isFirstVisit = false;
     } else {
-      msg = `${t.ru.start}\n\n${t.ru.lang}\n1. Русский\n2. Қазақша`;
+      msg = `${t.ru.start}\n\n${t.ru.lang}`;
     }
     state.step = "lang";
+    // Отправляем с кнопками
+    await sendMessage(sender, msg, ["Русский", "Қазақша"]);
+    users.set(sender, state);
+    return res.status(200).json({ ok: true });
   }
   else if (state.step === "lang") {
     state.lang = (lower.includes("қазақ") || lower === "қазақша" || text === "2") ? "kz" : "ru";
-    msg = `${t[state.lang].start}\n\nВыберите:\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}`;
+    msg = `${t[state.lang].start}\n\nВыберите:`;
     state.step = "choose_org";
     state.prevStep = "lang";
+    // Отправляем с кнопками
+    await sendMessage(sender, msg, [t[state.lang].kg, t[state.lang].school, t[state.lang].back]);
+    users.set(sender, state);
+    return res.status(200).json({ ok: true });
   }
   else if (state.step === "choose_org") {
     state.org = (lower.includes("балабақша") || lower.includes("сад") || lower.includes("🏫") || text === "1") ? "kg" : "school";
