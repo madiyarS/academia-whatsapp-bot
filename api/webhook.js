@@ -373,25 +373,29 @@ const t = {
   }
 };
 
-// ИСПРАВЛЕННАЯ функция отправки сообщений
 // ИСПРАВЛЕННАЯ функция отправки сообщений для Green-API
-function sendMessage(chatId, text) {
-  // 1. Ensure the chatId has the required '@c.us' suffix for Green-API
-  // (Your existing code already provides it from body.messageData.chatId, but this is a good safeguard)
+async function sendMessage(chatId, text) {
   const finalChatId = chatId.includes('@') ? chatId : `${chatId}@c.us`; 
   
   const url = `https://api.green-api.com/waInstance${GREEN_INSTANCE}/sendMessage/${GREEN_TOKEN}`;
 
- return fetch(url, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-  // Green-API requires the chatId to be a JSON string, which JSON.stringify handles, 
-      // but ensure the format is correct.
-      chatId: finalChatId, 
-      message: text
-    })
- });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chatId: finalChatId, 
+        message: text
+      })
+    });
+    
+    const result = await response.json();
+    console.log('Message sent:', result);
+    return result;
+  } catch (error) {
+    console.error('Error sending message:', error);
+    return null;
+  }
 }
 
 function sendTelegram(text) {
