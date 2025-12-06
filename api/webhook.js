@@ -430,7 +430,9 @@ export default async function handler(req, res) {
   const body = req.body;
   
   // ИСПРАВЛЕННАЯ обработка входящих данных от Green API
-  const typeWebhook = body.typeWebhook;
+  console.log('Received webhook:', JSON.stringify(body, null, 2));
+  
+  const typeWebhook = body?.typeWebhook;
   
   // Обрабатываем только входящие сообщения
   if (typeWebhook !== 'incomingMessageReceived') {
@@ -643,6 +645,9 @@ ${text}`);
   }
 
   users.set(sender, state);
-  if (msg) await sendMessage(sender, msg);
+  if (msg && sender) {
+    console.log('Sending message to:', sender);
+    await sendMessage(sender, msg);
+  }
   res.status(200).json({ ok: true });
 }
