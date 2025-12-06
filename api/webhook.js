@@ -447,20 +447,11 @@ export default async function handler(req, res) {
   
   console.log('Sender:', sender);
   console.log('Text:', text);
-  ```
-  
-  Проблема в том, что `chatId` находится в `senderData`, а не в `messageData`! 
-  
-  Вот структура, которая приходит:
-  ```
-  senderData: {
-    chatId: "77476951662@c.us"  ← ВОТ ОНО!
-  }
-  messageData: {
-    textMessageData: {
-      textMessage: "Привет"
-    }
-  }
+ 
+  if (!sender) {
+    console.error('No sender found in webhook data');
+    return res.status(200).json({ ok: true });
+  }  
   const lower = text.toLowerCase();
 
   let state = users.get(sender) || { 
