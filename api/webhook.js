@@ -439,9 +439,28 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
-  const messageData = body.messageData;
-  const sender = messageData.chatId; // Формат: 77015731794@c.us
-  const text = (messageData.textMessageData?.textMessage || "").trim();
+  // Правильная структура для Green-API
+  const senderData = body?.senderData;
+  const messageData = body?.messageData;
+  const sender = senderData?.chatId; // Берём из senderData, а не messageData!
+  const text = (messageData?.textMessageData?.textMessage || "").trim();
+  
+  console.log('Sender:', sender);
+  console.log('Text:', text);
+  ```
+  
+  Проблема в том, что `chatId` находится в `senderData`, а не в `messageData`! 
+  
+  Вот структура, которая приходит:
+  ```
+  senderData: {
+    chatId: "77476951662@c.us"  ← ВОТ ОНО!
+  }
+  messageData: {
+    textMessageData: {
+      textMessage: "Привет"
+    }
+  }
   const lower = text.toLowerCase();
 
   let state = users.get(sender) || { 
