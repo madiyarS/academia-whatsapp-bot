@@ -445,6 +445,10 @@ function validatePhone(text) {
 }
 
 export default async function handler(req, res) {
+  console.log('=== WEBHOOK RECEIVED ===');
+  console.log('Method:', req.method);
+  console.log('Body:', JSON.stringify(req.body, null, 2));
+  
   if (req.method !== "POST") return res.status(405).end();
 
   const body = req.body;
