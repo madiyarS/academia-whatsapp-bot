@@ -489,74 +489,77 @@ export default async function handler(req, res) {
   const lower = text.toLowerCase();
   let msg = "";
 
-  // Определяем язык из текста (если есть казахские слова - казахский)
+  // Определяем язык из текста
   const isKazakh = lower.includes("қазақ") || lower.includes("балабақша") || 
                    lower.includes("мектеп") || lower.includes("артқа") || 
-                   lower.includes("иә") || lower.includes("шағым");
+                   lower.includes("иә") || lower.includes("шағым") ||
+                   lower.includes("таңдаңыз") || lower.includes("бастауыш");
   const lang = isKazakh ? "kz" : "ru";
 
-  // ПРОСТАЯ ЛОГИКА БЕЗ СОСТОЯНИЙ
+  // УЛУЧШЕННАЯ ЛОГИКА
   
-  // Команда /start или приветствие
-  if (text === "/start" || lower === "привет" || lower === "сәлем" || lower === "hello" || lower === "начать заново" || lower === "қайта бастау" || text === "🔄" || lower.includes("🔄")) {
+  // Команда /start или приветствие - ВСЕГДА отвечаем
+  if (text === "/start" || lower === "привет" || lower === "сәлем" || 
+      lower === "hello" || lower === "начать заново" || lower === "қайта бастау" || 
+      text === "🔄" || lower.includes("🔄") || lower === "hi") {
     msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский 🇷🇺\n2. Қазақша 🇰🇿`;
   }
-  
-  // Выбор языка
-  else if (text === "1" || lower.includes("русский")) {
+
+  // Выбор языка - проверяем ТОЧНОЕ совпадение
+  else if ((text === "1" || lower === "русский") && !lower.includes("общая") && !lower.includes("информац")) {
     msg = `${t.ru.start}\n\nВыберите:\n\n1. ${t.ru.kg}\n2. ${t.ru.school}`;
   }
-  else if (text === "2" || lower.includes("қазақ")) {
+  else if (text === "2" && !lower.includes("стоимость") && !lower.includes("оплат")) {
     msg = `${t.kz.start}\n\nТаңдаңыз:\n\n1. ${t.kz.kg}\n2. ${t.kz.school}`;
   }
-  
-  // Детский сад
-  else if (lower.includes("сад") || lower.includes("балабақша") || (text === "1" && !lower.includes("общ"))) {
-    const currentLang = lower.includes("қазақ") || lower.includes("балабақша") ? "kz" : "ru";
-    msg = `${t[currentLang].kg}\n\n${t[currentLang].menu}\n\n${getMainMenuKG(currentLang)}`;
+
+  // Выбор организации
+  else if (lower.includes("детский сад") || lower.includes("балабақша") || lower.includes("🏫")) {
+    msg = `${t[lang].kg}\n\n${t[lang].menu}\n\n${getMainMenuKG(lang)}`;
   }
-  
-  // Школа
-  else if (lower.includes("школ") || lower.includes("мектеп") || (text === "2" && !lower.includes("стоимость"))) {
-    const currentLang = lower.includes("қазақ") || lower.includes("мектеп") ? "kz" : "ru";
-    msg = `${t[currentLang].school}\n\n${t[currentLang].menu}\n\n${getMainMenuSchool(currentLang)}`;
+  else if (lower.includes("школ") || lower.includes("мектеп") || lower.includes("🎓")) {
+    msg = `${t[lang].school}\n\n${t[lang].menu}\n\n${getMainMenuSchool(lang)}`;
   }
-  
-  // Обработка пунктов меню - всегда показываем информацию
-  else if (lower.includes("общая") || lower.includes("жалпы") || lower.includes("информац") || lower.includes("ақпарат") || text === "1") {
-    // Определяем детский сад или школа из предыдущего контекста
+
+  // Пункты меню (работают для ЛЮБОЙ организации)
+  else if (text === "1" || lower.includes("общая") || lower.includes("жалпы") || lower.includes("информац") || lower.includes("ақпарат")) {
     msg = t[lang].info_kg + `\n\n${getMainMenuKG(lang)}`;
   }
-  else if (lower.includes("стоимость") || lower.includes("бағас") || lower.includes("оплат") || lower.includes("төлем") || text === "2") {
+  else if (text === "2" || lower.includes("стоимость") || lower.includes("бағас") || lower.includes("оплат") || lower.includes("төлем")) {
     msg = t[lang].cost_kg + `\n\n${getMainMenuKG(lang)}`;
   }
-  else if (lower.includes("поступлен") || lower.includes("қабылдау") || text === "3") {
+  else if (text === "3" || lower.includes("поступлен") || lower.includes("қабылдау")) {
     msg = t[lang].enroll_kg + `\n\nНапишите: Да + имя ребенка + телефон`;
   }
-  else if (lower.includes("режим") || lower.includes("тәртіб") || text === "4") {
+  else if (text === "4" || lower.includes("режим") || lower.includes("тәртіб")) {
     msg = t[lang].regime_kg + `\n\n${getMainMenuKG(lang)}`;
   }
-  else if (lower.includes("питан") || lower.includes("тамақ") || text === "5") {
+  else if (text === "5" || lower.includes("питан") || lower.includes("тамақ")) {
     msg = t[lang].food_kg + `\n\n${getMainMenuKG(lang)}`;
   }
-  else if (lower.includes("кружк") || lower.includes("үйірме") || text === "6") {
+  else if (text === "6" || lower.includes("кружк") || lower.includes("үйірме") || lower.includes("персонал") || lower.includes("қызметкер")) {
     msg = t[lang].circles_kg + `\n\n${getMainMenuKG(lang)}`;
   }
-  else if (lower.includes("жалоб") || lower.includes("шағым") || text === "7") {
-    // Отправляем жалобу
+  else if (text === "7" || lower.includes("жалоб") || lower.includes("шағым") || lower.includes("руководство") || lower.includes("басшылық")) {
+    msg = t[lang].complaintAsk + `\n\nПросто опишите вашу жалобу следующим сообщением.`;
+  }
+
+  // Обработка жалобы (любое сообщение длиннее 20 символов после выбора пункта 7)
+  else if (text.length > 20 && !validatePhone(text) && !lower.includes("да") && !lower.includes("иә")) {
     const now = new Date();
     sendTelegram(`🚨 <b>ЖАЛОБА</b>
 📊 <b>Дата:</b> ${now.toLocaleDateString('ru-RU')}
 ⏰ <b>Время:</b> ${now.toLocaleTimeString('ru-RU')}
 👤 <b>От:</b> ${sender}
+👤 <b>Имя:</b> ${senderData?.senderName || 'Неизвестно'}
 
-<b>Текст:</b>
+<b>Текст жалобы:</b>
 ${text}`);
-    msg = t[lang].complaintDone;
+    msg = t[lang].complaintDone + `\n\n${getMainMenuKG(lang)}`;
   }
-  
+
   // Заявка с контактами
-  else if ((lower.includes("да") || lower.includes("иә")) && validatePhone(text)) {
+  else if ((lower.includes("да") || lower.includes("иә") || lower.includes("yes")) && validatePhone(text)) {
     const requestId = generateRequestId();
     const now = new Date();
     
@@ -564,28 +567,31 @@ ${text}`);
 📊 <b>Дата:</b> ${now.toLocaleDateString('ru-RU')}
 ⏰ <b>Время:</b> ${now.toLocaleTimeString('ru-RU')}
 👤 <b>От:</b> ${sender}
-🆔 <b>Номер:</b> ${requestId}
+👤 <b>Имя:</b> ${senderData?.senderName || 'Неизвестно'}
+🆔 <b>Номер заявки:</b> ${requestId}
 
-<b>Данные:</b>
+<b>Контактные данные:</b>
 ${text}`);
     
     msg = t[lang].thanks + requestId;
     if (!isWorkingHours()) {
       msg += t[lang].afterHours;
     }
+    msg += `\n\n${getMainMenuKG(lang)}`;
   }
-  
-  // Обработка запроса на связь с оператором
-  else if (lower.includes("оператор") || lower.includes("человек") || lower.includes("адам") || lower.includes("қызметкер")) {
-    msg = t[lang].operator;
+
+  // Оператор
+  else if (lower.includes("оператор") || lower.includes("человек") || lower.includes("адам")) {
+    msg = t[lang].operator + `\n\n${getMainMenuKG(lang)}`;
   }
-  
-  // Не понял
+
+  // Не понял - ВСЕГДА даем меню
   else {
-    msg = `${t[lang].notUnderstood}\n\nНапишите: /start`;
+    msg = `${t[lang].notUnderstood}\n\n${t.ru.lang}\n\n1. Русский 🇷🇺\n2. Қазақша 🇰🇿\n\nИли напишите: /start`;
   }
 
   if (msg && sender) {
+    console.log('Sending message to:', sender);
     await sendMessage(sender, msg);
   }
   
