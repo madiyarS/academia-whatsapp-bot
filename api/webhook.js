@@ -5,8 +5,10 @@ const GREEN_TOKEN = process.env.GREEN_TOKEN;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
 const ADMIN_TELEGRAM = process.env.ADMIN_TELEGRAM;
 
-const users = new Map();
-const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 часа
+// УБИРАЕМ Map - не работает в serverless
+// const users = new Map();
+
+const SESSION_TIMEOUT = 24 * 60 * 60 * 1000;
 
 // Тексты на двух языках с эмодзи
 const t = {
@@ -430,6 +432,23 @@ function getMainMenu(lang) {
   return t[lang].items.map((item, i) => `${i + 1}. ${item}`).join('\n') + `\n\n0. ${t[lang].back}\n🔄 ${t[lang].restart}`;
 }
 
+// Вспомогательные функции для меню
+function getMainMenuKG(lang) {
+  return `1. ${t[lang].items[0]}
+2. ${t[lang].items[1]}
+3. ${t[lang].items[2]}
+4. ${t[lang].items[3]}
+5. ${t[lang].items[4]}
+6. ${t[lang].items[5]}
+7. ${t[lang].items[6]}
+
+Напишите /start для начала`;
+}
+
+function getMainMenuSchool(lang) {
+  return getMainMenuKG(lang); // То же самое
+}
+
 function isWorkingHours() {
   const hour = new Date().getHours();
   return hour >= 8 && hour < 18;
@@ -447,21 +466,16 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
   const body = req.body;
-  
-  // ИСПРАВЛЕННАЯ обработка входящих данных от Green API
   console.log('Received webhook:', JSON.stringify(body, null, 2));
   
   const typeWebhook = body?.typeWebhook;
-  
-  // Обрабатываем только входящие сообщения
   if (typeWebhook !== 'incomingMessageReceived') {
     return res.status(200).json({ ok: true });
   }
 
-  // Правильная структура для Green-API
   const senderData = body?.senderData;
   const messageData = body?.messageData;
-  const sender = senderData?.chatId; // Берём из senderData, а не messageData!
+  const sender = senderData?.chatId;
   const text = (messageData?.textMessageData?.textMessage || "").trim();
   
   console.log('Sender:', sender);
@@ -470,232 +484,110 @@ export default async function handler(req, res) {
   if (!sender) {
     console.error('No sender found in webhook data');
     return res.status(200).json({ ok: true });
-  }  
-  const lower = text.toLowerCase();
-
-  let state = users.get(sender) || { 
-    lang: "ru", 
-    step: "start", 
-    org: null, 
-    prevStep: null,
-    lastActivity: Date.now(),
-    isFirstVisit: true
-  };
-
-  // Проверка таймаута сессии
-  if (Date.now() - state.lastActivity > SESSION_TIMEOUT) {
-    state = { 
-      lang: state.lang, 
-      step: "start", 
-      org: null, 
-      prevStep: null,
-      lastActivity: Date.now(),
-      isFirstVisit: false
-    };
   }
-
-  state.lastActivity = Date.now();
-
+  
+  const lower = text.toLowerCase();
   let msg = "";
 
-  // Обработка команды /start или "Начать заново" - возврат в самое начало (выбор языка)
-  if (text === "/start" || lower === "начать заново" || lower === "қайта бастау" || lower === "🔄 начать заново" || lower === "🔄 қайта бастау" || text === "🔄" || lower.includes("🔄")) {
-    state = { 
-      lang: "ru", 
-      step: "start", 
-      org: null, 
-      prevStep: null,
-      lastActivity: Date.now(),
-      isFirstVisit: false
-    };
-    msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
-    state.step = "lang";
-    await sendMessage(sender, msg);
-    users.set(sender, state);
-    return res.status(200).json({ ok: true });
-  }
-  // Обработка запроса на связь с оператором
-  else if (lower.includes("оператор") || lower.includes("человек") || lower.includes("адам") || lower.includes("қызметкер")) {
-    msg = t[state.lang].operator;
-    if (state.org) {
-      msg += `\n\n${getMainMenu(state.lang)}`;
-    }
-  }
-  // Обработка кнопки "Назад"
-  else if (lower === "назад" || lower === "артқа" || lower === "◀️ назад" || lower === "◀️ артқа" || text === "0") {
-    if (state.step === "complaint" || state.step === "waiting_contact" || state.step === "enroll") {
-      // Возвращаемся в меню
-      state.step = "menu";
-      state.prevStep = null;
-      msg = `${t[state.lang][state.org === "kg" ? "kg" : "school"]}\n\n${t[state.lang].menu}\n\n${getMainMenu(state.lang)}`;
-    } else if (state.step === "menu") {
-      // Из меню возвращаемся к выбору организации
-      state.step = "choose_org";
-      state.org = null;
-      msg = `${t[state.lang].start}\n\nВыберите:\n\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}\n\n0. ${t[state.lang].back}`;
-      await sendMessage(sender, msg);
-      users.set(sender, state);
-      return res.status(200).json({ ok: true });
-    } else if (state.step === "choose_org") {
-      // Из выбора организации возвращаемся к выбору языка
-      state.step = "lang";
-      msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
-      await sendMessage(sender, msg);
-      users.set(sender, state);
-      return res.status(200).json({ ok: true });
-    }
-  }
-  // Первое приветствие
-  else if (state.step === "start") {
-    if (state.isFirstVisit) {
-      const name = senderData?.senderName || "Уважаемый пользователь";
-      msg = `👋 Здравствуйте, ${name}!\n\n${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
-      state.isFirstVisit = false;
-    } else {
-      msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский\n2. Қазақша`;
-    }
-    state.step = "lang";
-    await sendMessage(sender, msg);
-    users.set(sender, state);
-    return res.status(200).json({ ok: true });
-  }
-  else if (state.step === "lang") {
-    state.lang = (lower.includes("қазақ") || lower === "қазақша" || text === "2") ? "kz" : "ru";
-    msg = `${t[state.lang].start}\n\nВыберите:\n\n1. ${t[state.lang].kg}\n2. ${t[state.lang].school}\n\n0. ${t[state.lang].back}`;
-    state.step = "choose_org";
-    state.prevStep = "lang";
-    await sendMessage(sender, msg);
-    users.set(sender, state);
-    return res.status(200).json({ ok: true });
-  }
-  else if (state.step === "choose_org") {
-    state.org = (lower.includes("балабақша") || lower.includes("сад") || lower.includes("🏫") || text === "1") ? "kg" : "school";
-    msg = `${t[state.lang][state.org === "kg" ? "kg" : "school"]}\n\n${t[state.lang].menu}\n\n${getMainMenu(state.lang)}`;
-    state.step = "menu";
-    state.prevStep = "choose_org";
-  }
-  else if (state.step === "menu") {
-    const l = state.lang;
-    const isKg = state.org === "kg";
+  // Определяем язык из текста (если есть казахские слова - казахский)
+  const isKazakh = lower.includes("қазақ") || lower.includes("балабақша") || 
+                   lower.includes("мектеп") || lower.includes("артқа") || 
+                   lower.includes("иә") || lower.includes("шағым");
+  const lang = isKazakh ? "kz" : "ru";
 
-    if (lower.includes("жалоб") || lower.includes("шағым") || lower.includes("руководство") || lower.includes("басшылық") || text === "7" || lower.includes("📞")) {
-      msg = t[l].complaintAsk;
-      msg += `\n\n0. ${t[l].back}`;
-      state.prevStep = "menu";
-      state.step = "complaint";
-    }
-    else if (text === "1" || lower.includes("общая") || lower.includes("жалпы") || lower.includes("📋")) { 
-      msg = isKg ? t[l].info_kg : t[l].info_school;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
-    else if (text === "2" || lower.includes("стоимость") || lower.includes("бағас") || lower.includes("оплат") || lower.includes("төлем") || lower.includes("💰")) { 
-      msg = isKg ? t[l].cost_kg : t[l].cost_school;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
-    else if (text === "3" || lower.includes("поступлен") || lower.includes("қабылдау") || lower.includes("📝")) { 
-      msg = isKg ? t[l].enroll_kg : t[l].enroll_school;
-      msg += `\n\nДа / Иә\n0. ${t[l].back}`;
-      state.prevStep = "menu";
-      state.step = "enroll"; 
-    }
-    else if (text === "4" || lower.includes("режим") || lower.includes("тәртіб") || lower.includes("⏰")) { 
-      msg = isKg ? t[l].regime_kg : t[l].regime_school;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
-    else if (text === "5" || lower.includes("питан") || lower.includes("тамақ") || lower.includes("🍽")) { 
-      msg = isKg ? t[l].food_kg : t[l].food_school;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
-    else if (text === "6" || lower.includes("кружк") || lower.includes("үйірме") || lower.includes("персонал") || lower.includes("қызметкер") || lower.includes("🎨")) { 
-      msg = isKg ? t[l].circles_kg : t[l].circles_school;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
-    else if (lower.includes("faq") || lower.includes("частые вопросы") || lower.includes("часто") || lower.includes("жиі") || lower === "❓") {
-      msg = t[l].faq;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
-    else { 
-      msg = t[l].notUnderstood;
-      msg += `\n\n${getMainMenu(l)}`;
-    }
+  // ПРОСТАЯ ЛОГИКА БЕЗ СОСТОЯНИЙ
+  
+  // Команда /start или приветствие
+  if (text === "/start" || lower === "привет" || lower === "сәлем" || lower === "hello" || lower === "начать заново" || lower === "қайта бастау" || text === "🔄" || lower.includes("🔄")) {
+    msg = `${t.ru.start}\n\n${t.ru.lang}\n\n1. Русский 🇷🇺\n2. Қазақша 🇰🇿`;
   }
-  else if (state.step === "complaint") {
-    const orgName = state.org === "kg" ? (state.lang === "ru" ? "Детский сад" : "Балабақша") : (state.lang === "ru" ? "Начальная школа" : "Бастауыш мектеп");
+  
+  // Выбор языка
+  else if (text === "1" || lower.includes("русский")) {
+    msg = `${t.ru.start}\n\nВыберите:\n\n1. ${t.ru.kg}\n2. ${t.ru.school}`;
+  }
+  else if (text === "2" || lower.includes("қазақ")) {
+    msg = `${t.kz.start}\n\nТаңдаңыз:\n\n1. ${t.kz.kg}\n2. ${t.kz.school}`;
+  }
+  
+  // Детский сад
+  else if (lower.includes("сад") || lower.includes("балабақша") || (text === "1" && !lower.includes("общ"))) {
+    const currentLang = lower.includes("қазақ") || lower.includes("балабақша") ? "kz" : "ru";
+    msg = `${t[currentLang].kg}\n\n${t[currentLang].menu}\n\n${getMainMenuKG(currentLang)}`;
+  }
+  
+  // Школа
+  else if (lower.includes("школ") || lower.includes("мектеп") || (text === "2" && !lower.includes("стоимость"))) {
+    const currentLang = lower.includes("қазақ") || lower.includes("мектеп") ? "kz" : "ru";
+    msg = `${t[currentLang].school}\n\n${t[currentLang].menu}\n\n${getMainMenuSchool(currentLang)}`;
+  }
+  
+  // Обработка пунктов меню - всегда показываем информацию
+  else if (lower.includes("общая") || lower.includes("жалпы") || lower.includes("информац") || lower.includes("ақпарат") || text === "1") {
+    // Определяем детский сад или школа из предыдущего контекста
+    msg = t[lang].info_kg + `\n\n${getMainMenuKG(lang)}`;
+  }
+  else if (lower.includes("стоимость") || lower.includes("бағас") || lower.includes("оплат") || lower.includes("төлем") || text === "2") {
+    msg = t[lang].cost_kg + `\n\n${getMainMenuKG(lang)}`;
+  }
+  else if (lower.includes("поступлен") || lower.includes("қабылдау") || text === "3") {
+    msg = t[lang].enroll_kg + `\n\nНапишите: Да + имя ребенка + телефон`;
+  }
+  else if (lower.includes("режим") || lower.includes("тәртіб") || text === "4") {
+    msg = t[lang].regime_kg + `\n\n${getMainMenuKG(lang)}`;
+  }
+  else if (lower.includes("питан") || lower.includes("тамақ") || text === "5") {
+    msg = t[lang].food_kg + `\n\n${getMainMenuKG(lang)}`;
+  }
+  else if (lower.includes("кружк") || lower.includes("үйірме") || text === "6") {
+    msg = t[lang].circles_kg + `\n\n${getMainMenuKG(lang)}`;
+  }
+  else if (lower.includes("жалоб") || lower.includes("шағым") || text === "7") {
+    // Отправляем жалобу
     const now = new Date();
-    
     sendTelegram(`🚨 <b>ЖАЛОБА</b>
 📊 <b>Дата:</b> ${now.toLocaleDateString('ru-RU')}
 ⏰ <b>Время:</b> ${now.toLocaleTimeString('ru-RU')}
 👤 <b>От:</b> ${sender}
-🏫 <b>Организация:</b> ${orgName}
-🗣 <b>Язык:</b> ${state.lang === 'ru' ? '🇷🇺 Русский' : '🇰🇿 Қазақша'}
 
-<b>Текст жалобы:</b>
+<b>Текст:</b>
 ${text}`);
-    
-    msg = t[state.lang].complaintDone;
-    msg += `\n\n${getMainMenu(state.lang)}`;
-    state.step = "menu";
-    state.prevStep = null;
+    msg = t[lang].complaintDone;
   }
-  else if (state.step === "enroll") {
-    if (lower.includes("да") || lower.includes("иә") || lower === "yes") {
-      msg = t[state.lang].enrollRequest;
-      msg += `\n\n0. ${t[state.lang].back}`;
-      state.prevStep = "enroll";
-      state.step = "waiting_contact";
-    } else {
-      msg = state.lang === "ru" ? "Хорошо 😊" : "Жақсы 😊";
-      msg += `\n\n${getMainMenu(state.lang)}`;
-      state.step = "menu";
-      state.prevStep = null;
-    }
-  }
-  else if (state.step === "waiting_contact") {
-    const hasPhone = validatePhone(text);
+  
+  // Заявка с контактами
+  else if ((lower.includes("да") || lower.includes("иә")) && validatePhone(text)) {
+    const requestId = generateRequestId();
+    const now = new Date();
     
-    if (!hasPhone) {
-      msg = t[state.lang].phoneWarning;
-      msg += `\n\n0. ${t[state.lang].back}`;
-    } else {
-      const orgName = state.org === "kg" ? (state.lang === "ru" ? "Детский сад" : "Балабақша") : (state.lang === "ru" ? "Начальная школа" : "Бастауыш мектеп");
-      const enrollType = state.org === "kg" ? (state.lang === "ru" ? "экскурсию" : "экскурсияға") : (state.lang === "ru" ? "тестирование" : "тестілеуге");
-      const requestId = generateRequestId();
-      const now = new Date();
-      
-      sendTelegram(`📝 <b>НОВАЯ ЗАЯВКА</b>
+    sendTelegram(`📝 <b>НОВАЯ ЗАЯВКА</b>
 📊 <b>Дата:</b> ${now.toLocaleDateString('ru-RU')}
 ⏰ <b>Время:</b> ${now.toLocaleTimeString('ru-RU')}
 👤 <b>От:</b> ${sender}
-🏫 <b>Организация:</b> ${orgName}
-📋 <b>Тип:</b> Запись на ${enrollType}
-🗣 <b>Язык:</b> ${state.lang === 'ru' ? '🇷🇺 Русский' : '🇰🇿 Қазақша'}
-🆔 <b>Номер заявки:</b> ${requestId}
+🆔 <b>Номер:</b> ${requestId}
 
-<b>Контактные данные:</b>
+<b>Данные:</b>
 ${text}`);
-      
-      msg = t[state.lang].thanks + requestId;
-      
-      if (!isWorkingHours()) {
-        msg += t[state.lang].afterHours;
-      }
-      
-      msg += `\n\n${getMainMenu(state.lang)}`;
-      state.step = "menu";
-      state.prevStep = null;
+    
+    msg = t[lang].thanks + requestId;
+    if (!isWorkingHours()) {
+      msg += t[lang].afterHours;
     }
   }
+  
+  // Обработка запроса на связь с оператором
+  else if (lower.includes("оператор") || lower.includes("человек") || lower.includes("адам") || lower.includes("қызметкер")) {
+    msg = t[lang].operator;
+  }
+  
+  // Не понял
   else {
-    msg = t[state.lang].notUnderstood;
-    msg += `\n\n${getMainMenu(state.lang)}`;
-    state.step = "menu";
+    msg = `${t[lang].notUnderstood}\n\nНапишите: /start`;
   }
 
-  users.set(sender, state);
   if (msg && sender) {
-    console.log('Sending message to:', sender);
     await sendMessage(sender, msg);
   }
+  
   res.status(200).json({ ok: true });
 }
