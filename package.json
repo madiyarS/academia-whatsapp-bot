@@ -3,10 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vercel dev"
+    "dev": "node api/webhook.js",
+    "start": "node api/webhook.js"
   },
   "dependencies": {
+    "@vercel/kv": "^2.0.0",
     "node-fetch": "^3.3.2",
-    "@vercel/kv": "^2.0.0"
+    "redis": "^5.10.0"
   }
 }

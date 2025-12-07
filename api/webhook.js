@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { kv } from '@vercel/kv';
+import { getState, setState, deleteState } from '../lib/redis.js';
 
 const GREEN_INSTANCE = process.env.GREEN_INSTANCE;
 const GREEN_TOKEN = process.env.GREEN_TOKEN;
@@ -8,50 +8,8 @@ const ADMIN_TELEGRAM = process.env.ADMIN_TELEGRAM;
 
 const SESSION_TIMEOUT = 24 * 60 * 60 * 1000; // 24 часа
 
-// Функции для работы с KV хранилищем
-async function getState(sender) {
-  try {
-    const state = await kv.get(`user:${sender}`);
-    if (state) {
-      // Проверка таймаута сессии
-      if (Date.now() - state.lastActivity > SESSION_TIMEOUT) {
-        return {
-          lang: state.lang || "ru",
-          step: "start",
-          org: null,
-          prevStep: null,
-          lastActivity: Date.now(),
-          isFirstVisit: false
-        };
-      }
-      return state;
-    }
-  } catch (error) {
-    console.error('Error getting state from KV:', error);
-  }
-  
-  // Состояние по умолчанию для новых пользователей
-  return {
-    lang: "ru",
-    step: "start",
-    org: null,
-    prevStep: null,
-    lastActivity: Date.now(),
-    isFirstVisit: true
-  };
-}
-
-async function setState(sender, state) {
-  try {
-    state.lastActivity = Date.now();
-    await kv.set(`user:${sender}`, state);
-    // Устанавливаем TTL 30 дней для автоматической очистки
-    await kv.expire(`user:${sender}`, 30 * 24 * 60 * 60);
-  } catch (error) {
-    console.error('Error setting state to KV:', error);
-  }
-}
-
+// ❌ DELETE THE DUPLICATE getState AND setState FUNCTIONS BELOW
+// The functions are now imported from lib/redis.js
 // Тексты на двух языках с эмодзи
 const t = {
   ru: {
